@@ -7,6 +7,8 @@ import logging
 import tokens
 from pocket import Pocket, PocketException
 
+from flask import Flask
+
 # Enable logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -16,22 +18,21 @@ logger = logging.getLogger(__name__)
 pocket_instance = Pocket(tokens.POCKET_CONSUMER_TOKEN, tokens.POCKET_ACCESS_TOKEN)
 auth_token = ""
 db = ForwardBotDatabase('botusers.db')
+app = Flask(__name__)
 
 users = {}
 
 
-# bot = telegram.Bot(token='')
-
-
 def start(bot, update, args):
     telegram_user = update.message.from_user
-    # print update
-    # print telegram_user
-
-
 
     if len(args) > 0:
-        access_token = pocket_instance.get_access_token(tokens.POCKET_CONSUMER_TOKEN, args[0])
+        try:
+            access_token = pocket_instance.get_access_token(tokens.POCKET_CONSUMER_TOKEN, args[0])
+        except PocketException:
+            bot.sendMessage(update.message.chat_id, text="Authorization error. \n Please, try again.")
+            authorize_bot(bot, update)
+
         if access_token:
             db.update_user(telegram_user, access_token)
             auth_token = access_token
@@ -62,9 +63,7 @@ def messages(bot, update):
     telegram_user = update.message.from_user
 
     if not users.has_key(telegram_user.id):
-
         authorize_bot(bot, update)
-
     elif (users.has_key(telegram_user.id)) and (len(users[telegram_user.id]['auth_token']) > 0):
         global auth_token
         auth_token = users[telegram_user.id]['auth_token']
@@ -72,15 +71,12 @@ def messages(bot, update):
         urls = urlextractor.parsetext(update.message.text)
         if len(urls) > 0:
             response = pocket_push(urls)
-
-
             message_text = "Added:\n"
             i = 1
             print response
             for item in response:
-                #word_count = int (item["item"]["word_count"])
                 message_text += str(i) + ". " + item["item"]["title"] + "\n"
-                i+=1
+                i += 1
             print message_text
             bot.sendMessage(update.message.chat_id, text=message_text)
         else:
@@ -114,7 +110,6 @@ def authorize_bot(bot, update):
 
 
 def pocket_push(urls):
-
     responses = []
     print urls
     for url in urls:
@@ -122,8 +117,10 @@ def pocket_push(urls):
         try:
             responses.append(pocket_instance.add(url))
         except PocketException as e:
+            #TODO Add error messages to user
             print(e.message)
     return responses
+
 
 def main():
     global users
@@ -143,6 +140,11 @@ def main():
     updater.start_polling()
 
     updater.idle()
+
+
+@app.route('/')
+def hello_world():
+    return 'Hello World!'
 
 
 if __name__ == '__main__':
