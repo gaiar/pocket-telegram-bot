@@ -1,13 +1,12 @@
-# from pocket import Pocket, PocketException
 import urlextractor
 from ForwardBotDatabase import ForwardBotDatabase
-from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 import logging
 import tokens
 from pocket import Pocket, PocketException
 
-from flask import Flask
+from flask import Flask, request
 
 # Enable logging
 logging.basicConfig(
@@ -22,6 +21,8 @@ app = Flask(__name__)
 
 users = {}
 
+bot = {}
+dp = {}
 
 def start(bot, update, args):
     telegram_user = update.message.from_user
@@ -129,7 +130,13 @@ def main():
     print users
 
     updater = Updater(tokens.TELEGRAM_TOKEN)
+
+    global bot
+    bot = updater.bot
+
+    global dp
     dp = updater.dispatcher
+
 
     dp.add_handler(CommandHandler('start', start, pass_args=True))
     dp.add_handler(CommandHandler("help", help))
@@ -137,15 +144,37 @@ def main():
 
     dp.add_error_handler(error)
 
-    updater.start_polling()
-
-    updater.idle()
 
 
-@app.route('/')
-def hello_world():
-    return 'Hello World!'
+    '''
+    updater.start_webhook(listen='0.0.0.0', port=443, url_path=tokens.TELEGRAM_TOKEN,
+                               cert='path/to/cert.pem', key='path/to/key.key',
+                               webhook_url='https://mybot.pythonanywhere.com/%s' % BOT_TOKEN)
+    '''
 
+    #updater.start_polling()
+
+    #updater.idle()
+
+
+@app.route('/hook', methods=['GET', 'POST'])
+def webhook():
+    if request.method == "POST":
+        # retrieve the message in JSON and then transform it to Telegram object
+        update = Update.de_json(request.get_json(force=True))
+        dp.processUpdate(update)
+
+
+
+@app.route('/set_webhook', methods=['GET', 'POST'])
+def set_webhook():
+    s =  bot.set_webhook("https://forwardbot.ru/hook")
+    if s:
+        return "webhook setup ok"
+    else:
+        return "webhook setup failed"
 
 if __name__ == '__main__':
     main()
+    app.run(host='0.0.0.0',
+            debug=True)
