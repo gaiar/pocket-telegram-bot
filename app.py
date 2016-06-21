@@ -24,6 +24,7 @@ users = {}
 bot = {}
 dp = {}
 
+
 def start(bot, update, args):
     telegram_user = update.message.from_user
 
@@ -118,7 +119,7 @@ def pocket_push(urls):
         try:
             responses.append(pocket_instance.add(url))
         except PocketException as e:
-            #TODO Add error messages to user
+            # TODO Add error messages to user
             print(e.message)
     return responses
 
@@ -137,14 +138,11 @@ def main():
     global dp
     dp = updater.dispatcher
 
-
     dp.add_handler(CommandHandler('start', start, pass_args=True))
     dp.add_handler(CommandHandler("help", help))
     dp.add_handler(MessageHandler([Filters.text], messages))
 
     dp.add_error_handler(error)
-
-
 
     '''
     updater.start_webhook(listen='0.0.0.0', port=443, url_path=tokens.TELEGRAM_TOKEN,
@@ -152,9 +150,9 @@ def main():
                                webhook_url='https://mybot.pythonanywhere.com/%s' % BOT_TOKEN)
     '''
 
-    #updater.start_polling()
+    # updater.start_polling()
 
-    #updater.idle()
+    # updater.idle()
 
 
 @app.route('/hook', methods=['GET', 'POST'])
@@ -165,14 +163,14 @@ def webhook():
         dp.processUpdate(update)
 
 
-
 @app.route('/set_webhook', methods=['GET', 'POST'])
 def set_webhook():
-    s =  bot.set_webhook("https://forwardbot.ru/hook")
+    s = bot.set_webhook("https://forwardbot.ru/hook")
     if s:
         return "webhook setup ok"
     else:
         return "webhook setup failed"
+
 
 if __name__ == '__main__':
     main()
