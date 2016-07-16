@@ -1,28 +1,38 @@
+# _*_ coding:utf-8 _*_
 import urlextractor
 from ForwardBotDatabase import ForwardBotDatabase
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
+from telegram.ext import Dispatcher, Updater, CommandHandler, MessageHandler, Filters
 import logging
 import tokens
 from pocket import Pocket, PocketException
+from queue import Queue  # in python 2 it should be "from Queue"
+from threading import Thread
 
-from flask import Flask, request
+
+from flask import Flask, request, redirect
 
 # Enable logging
-logging.basicConfig(
+logging.basicConfig(filename='/home/gaiar/projects/forwardbot/forwardbot.log',filemode='a',
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO)
+    level=logging.DEBUG)
 
 logger = logging.getLogger(__name__)
 pocket_instance = Pocket(tokens.POCKET_CONSUMER_TOKEN, tokens.POCKET_ACCESS_TOKEN)
 auth_token = ""
 db = ForwardBotDatabase('botusers.db')
-app = Flask(__name__)
 
 users = {}
 
-bot = {}
-dp = {}
+
+#updater = Updater(tokens.TELEGRAM_TOKEN)
+
+bot = Bot(tokens.TELEGRAM_TOKEN)
+update_queue = Queue()
+
+dp = Dispatcher(bot, update_queue)
+
+app = Flask(__name__)
 
 
 def start(bot, update, args):
@@ -39,7 +49,7 @@ def start(bot, update, args):
             db.update_user(telegram_user, access_token)
             auth_token = access_token
             pocket_instance.access_token(auth_token)
-            print "Access token: " + access_token
+            #print "Access token: " + access_token
             bot.sendMessage(update.message.chat_id, text="Bot was successfully authorized!" \
                                                          "Now you can start sharing messages with URLs")
         else:
@@ -79,7 +89,7 @@ def messages(bot, update):
             for item in response:
                 message_text += str(i) + ". " + item["item"]["title"] + "\n"
                 i += 1
-            print message_text
+            #print message_text
             bot.sendMessage(update.message.chat_id, text=message_text)
         else:
             bot.sendMessage(update.message.chat_id, text="No URLs found!")
@@ -101,7 +111,7 @@ def authorize_bot(bot, update):
     print "checking request token"
     request_token = pocket_instance.get_request_token(tokens.POCKET_CONSUMER_TOKEN,
                                                       "https://telegram.me/links_forward_bot")
-    print request_token
+    #print request_token
     auth_url = pocket_instance.get_auth_url(request_token,
                                             "https://telegram.me/links_forward_bot?start=" + request_token)
     linkButton = [[InlineKeyboardButton("Authorize bot", url=auth_url)]]
@@ -113,7 +123,7 @@ def authorize_bot(bot, update):
 
 def pocket_push(urls):
     responses = []
-    print urls
+    #print urls
     for url in urls:
         print ("Sending URL: " + url)
         try:
@@ -124,55 +134,53 @@ def pocket_push(urls):
     return responses
 
 
+
+
 def main():
     global users
     users = db.get_users()
-
     print users
-
-    updater = Updater(tokens.TELEGRAM_TOKEN)
-
-    global bot
-    bot = updater.bot
-
-    global dp
-    dp = updater.dispatcher
 
     dp.add_handler(CommandHandler('start', start, pass_args=True))
     dp.add_handler(CommandHandler("help", help))
     dp.add_handler(MessageHandler([Filters.text], messages))
-
     dp.add_error_handler(error)
 
-    '''
-    updater.start_webhook(listen='0.0.0.0', port=443, url_path=tokens.TELEGRAM_TOKEN,
-                               cert='path/to/cert.pem', key='path/to/key.key',
-                               webhook_url='https://mybot.pythonanywhere.com/%s' % BOT_TOKEN)
-    '''
+    thread = Thread(target=dp.start, name='dp')
+    thread.start()
 
-    # updater.start_polling()
+main()
 
-    # updater.idle()
-
-
-@app.route('/hook', methods=['GET', 'POST'])
+@app.route('/hook/'+tokens.TELEGRAM_TOKEN, methods=['GET', 'POST'])
 def webhook():
     if request.method == "POST":
         # retrieve the message in JSON and then transform it to Telegram object
         update = Update.de_json(request.get_json(force=True))
-        dp.processUpdate(update)
+
+        logger.info("Update received! "+ update.message.text)
+        dp.process_update(update)
+        update_queue.put(update)
+        return "OK"
+    else:
+        return redirect("https://telegram.me/links_forward_bot", code=302)
+
+
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    return redirect("https://telegram.me/links_forward_bot", code=302)
 
 
 @app.route('/set_webhook', methods=['GET', 'POST'])
 def set_webhook():
-    s = bot.set_webhook("https://forwardbot.ru/hook")
+    s = bot.set_webhook("https://forwardbot.ru/hook/"+tokens.TELEGRAM_TOKEN)
     if s:
         return "webhook setup ok"
     else:
         return "webhook setup failed"
 
 
+
+
 if __name__ == '__main__':
-    main()
     app.run(host='0.0.0.0',
             debug=True)

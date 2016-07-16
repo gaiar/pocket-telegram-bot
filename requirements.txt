@@ -1,4 +1,3 @@
 python-telegram-bot
-pocket-api
 flask
 
