@@ -2,12 +2,14 @@
 import urlextractor
 from ForwardBotDatabase import ForwardBotDatabase
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import Dispatcher, Updater, CommandHandler, MessageHandler, Filters
+from telegram.ext import Dispatcher,CommandHandler, MessageHandler, Filters
+from telegram.contrib.botan import Botan
 import logging
 import tokens
 from pocket import Pocket, PocketException
 from queue import Queue  # in python 2 it should be "from Queue"
 from threading import Thread
+
 
 
 from flask import Flask, request, redirect
@@ -21,8 +23,11 @@ logger = logging.getLogger(__name__)
 pocket_instance = Pocket(tokens.POCKET_CONSUMER_TOKEN, tokens.POCKET_ACCESS_TOKEN)
 auth_token = ""
 db = ForwardBotDatabase('botusers.db')
+botan = Botan(tokens.BOTAN_TOKEN)
 
 users = {}
+
+
 
 
 #updater = Updater(tokens.TELEGRAM_TOKEN)
@@ -32,11 +37,14 @@ update_queue = Queue()
 
 dp = Dispatcher(bot, update_queue)
 
+
+
 app = Flask(__name__)
 
 
 def start(bot, update, args):
     telegram_user = update.message.from_user
+    botan.track(update,"/start")
 
     if len(args) > 0:
         try:
@@ -52,9 +60,11 @@ def start(bot, update, args):
             #print "Access token: " + access_token
             bot.sendMessage(update.message.chat_id, text="Bot was successfully authorized!" \
                                                          "Now you can start sharing messages with URLs")
+            botan.track(update, "authorize_success")
         else:
             bot.sendMessage(update.message.chat_id, text="Authorization was unsuccessful!" \
                                                          "Please, try once more")
+            botan.track(update, "authorize_fail")
             authorize_bot(bot, update)
 
     else:
@@ -68,6 +78,7 @@ def start(bot, update, args):
 
 
 def help(bot, update):
+    botan.track(update, "/help")
     bot.sendMessage(update.message.chat_id, text="Help!")
 
 
@@ -91,6 +102,7 @@ def messages(bot, update):
                 i += 1
             #print message_text
             bot.sendMessage(update.message.chat_id, text=message_text)
+            botan.track(update, "pocket_success")
         else:
             bot.sendMessage(update.message.chat_id, text="No URLs found!")
 
@@ -119,6 +131,7 @@ def authorize_bot(bot, update):
     bot.sendMessage(update.message.chat_id, text="You need to authorize this bot for your Pocket account",
                     reply_markup=InlineKeyboardMarkup(linkButton),
                     disable_web_page_preview=True)
+    botan.track(update, "authorize_pocket_start")
 
 
 def pocket_push(urls):
